@@ -802,29 +802,42 @@ async function escanear(){if(!('BarcodeDetector' in window))return alert('Este n
 const compra=id=>S.compras.find(x=>x.id===id);
 const baseCant=it=>(+it.cant||0)*(+it.factor>0?+it.factor:1);           // cantidad del ítem en la unidad base del material
 const reparto=(c,it)=>(it.reparto&&it.reparto.length)?it.reparto:[{proyectoId:c.proyectoId,cant:baseCant(it)}];
-const recibidoCompra=(cid,mid,pid)=>S.movs.filter(m=>m.compraId===cid&&m.materialId===mid&&(m.tipo==='entrada'||m.tipo==='recepcion')&&(!pid||m.proyectoId===pid)).reduce((s,m)=>s+(+m.cant||0),0);
-function estadoCompra(c){if(c.noAplica)return'no aplica';if(!(c.items||[]).length)return'por detallar';
+const idsCompra=cid=>{const c=compra(cid);return [cid,...((c&&c.alias)||[])]};
+const recibidoCompra=(cid,mid,pid)=>{const ids=idsCompra(cid);return S.movs.filter(m=>ids.includes(m.compraId)&&m.materialId===mid&&(m.tipo==='entrada'||m.tipo==='recepcion')&&(!pid||m.proyectoId===pid))
+  .reduce((s,m)=>s+(+m.cant||0),0)};
+function estadoCompra(c){if(c.unidoA)return'unido';if(c.noAplica)return'no aplica';if(!(c.items||[]).length)return'por detallar';
   let tot=0,rec=0;for(const it of c.items){tot+=baseCant(it);rec+=Math.min(recibidoCompra(c.id,it.materialId),baseCant(it))}
   return rec<=1e-9?'pedida':rec+1e-9<tot?'parcial':'recibida'}
-const TAG_EST={'por detallar':'warn','pedida':'','parcial':'warn','recibida':'ok','no aplica':''};
-const tagEst=c=>{const e=estadoCompra(c);return '<span class="tag '+TAG_EST[e]+'">'+e[0].toUpperCase()+e.slice(1)+'</span>'};
-const comprasDe=pid=>S.compras.filter(c=>c.proyectoId===pid||(c.items||[]).some(it=>reparto(c,it).some(r=>r.proyectoId===pid)));
+const TAG_EST={'unido':'','por detallar':'warn','pedida':'','parcial':'warn','recibida':'ok','no aplica':''};
+const tagEst=c=>{const e=estadoCompra(c);return '<span class="tag '+TAG_EST[e]+'">'+e[0].toUpperCase()+e.slice(1)+'</span>'+(c.local&&!c.unidoA?' <span class="tag bad">Sin pagar</span>':'')};
+const comprasDe=pid=>S.compras.filter(c=>!c.unidoA).filter(c=>c.proyectoId===pid||(c.items||[]).some(it=>reparto(c,it).some(r=>r.proyectoId===pid)));
 
 /* Las 6 columnas de cada material de un proyecto, en la unidad base */
 function columnas(pid){const R={};const fila=mid=>R[mid]||(R[mid]={mid,pres:0,comp:0,rec:0,usado:0,lista:null});
   for(const l of S.lista.filter(l=>l.proyectoId===pid)){const r=fila(l.materialId);r.pres+=(+l.cant||0)*(1+(l.desp||0)/100);r.lista=l}
-  for(const c of S.compras)if(!c.noAplica)for(const it of (c.items||[]))for(const rp of reparto(c,it))if(rp.proyectoId===pid)fila(it.materialId).comp+=+rp.cant||0;
+  for(const c of S.compras)if(!c.noAplica&&!c.unidoA)for(const it of (c.items||[]))for(const rp of reparto(c,it))if(rp.proyectoId===pid)fila(it.materialId).comp+=+rp.cant||0;
   for(const m of S.movs)if(m.materialId&&m.proyectoId===pid){
     if((m.tipo==='entrada'||m.tipo==='recepcion')&&m.compraId)fila(m.materialId).rec+=+m.cant||0;
     if(m.tipo==='salida')fila(m.materialId).usado+=+m.cant||0}
   return Object.values(R).map(r=>{const m=material(r.mid);return m?{...r,m,pend:r.comp-r.rec,falta:r.pres-r.comp,controla:!!m.controlarUso}:null}).filter(Boolean).sort((a,b)=>a.m.nombre.localeCompare(b.m.nombre,'es'))}
 const n2=v=>fmtN(Math.round(v*100)/100);
 
+/* ---------- Pedidos locales: proponer unirlos con la compra del Control ---------- */
+const valorPedido=c=>+c.valor>0?+c.valor:(c.items||[]).reduce((s,it)=>s+(+it.precio||0)*(+it.cant||0),0);
+function parecidoProv(a,b){a=norm(a);b=norm(b);if(!a||!b)return false;if(a===b||a.includes(b)||b.includes(a))return true;
+  const tk=x=>new Set(x.split(/[^a-z0-9]+/).filter(w=>w.length>2));const A=tk(a),B=tk(b);let n=0;A.forEach(w=>{if(B.has(w))n++});return n>0&&n/Math.min(A.size,B.size)>=0.5}
+function candidatosUnion(c){if(!c||c.local||c.unidoA)return[];return S.compras.filter(l=>l.local&&!l.unidoA&&!(c.noUnir||[]).includes(l.id)&&l.proyectoId===c.proyectoId&&parecidoProv(l.proveedor,c.proveedor)&&
+  (()=>{const v=valorPedido(l);return !(v>0)||!(+c.total>0)||Math.abs(v-c.total)/c.total<=0.2})())}
+const comprasConCandidatos=pid=>S.compras.filter(c=>(!pid||c.proyectoId===pid)&&candidatosUnion(c).length);
+async function unirPedido(cid,lid){const c=compra(cid),l=compra(lid);if(!c||!l)return;
+  await guardar('compras',{...c,items:(l.items||[]).length?l.items:(c.items||[]),flete:c.flete||l.flete||0,noAplica:false,alias:[...new Set([...(c.alias||[]),l.id,...(l.alias||[])])]});
+  await guardar('compras',{...l,unidoA:c.id})}
+
 /* ---------- PROYECTO: lista con 6 columnas, compras, comparativo, sobrantes ---------- */
 function vPro(id,sub){const p=proyecto(id);if(!p){location.hash='pro';return}sub=sub||'lista';setTop(p.nombre,true);
   const pc=comprasDe(id),pd=pc.filter(c=>estadoCompra(c)==='por detallar').length;
   const tabs='<div class="chips">'+[['lista','Lista de materiales'],['compras','Compras'+(pc.length?' '+pc.length:'')],['comp','Comparativo'],['sob','Sobrantes']].map(([k,t])=>'<a class="chip '+(sub===k?'on':'')+'" href="#p/'+id+'/'+k+'">'+t+'</a>').join('')+'<button class="chip" id="edp">Editar</button></div>'+
-    (pd&&sub!=='compras'?'<div class="aviso">'+pd+' compra(s) por detallar: agrega los materiales para que cuenten. <a class="lnk" href="#p/'+id+'/compras">Ver</a></div>':'')+(p.estado==='cerrado'?'<div class="aviso">Proyecto cerrado.</div>':'');
+    (comprasConCandidatos(id).length?'<div class="aviso">'+comprasConCandidatos(id).length+' compra(s) del Control parecen ser pedidos locales que ya tienes. Ábrelas para unirlas. <a class="lnk" href="#p/'+id+'/compras">Ver</a></div>':'')+(pd&&sub!=='compras'?'<div class="aviso">'+pd+' compra(s) por detallar: agrega los materiales para que cuenten. <a class="lnk" href="#p/'+id+'/compras">Ver</a></div>':'')+(p.estado==='cerrado'?'<div class="aviso">Proyecto cerrado.</div>':'');
   if(sub==='comp'){setFab(null);$('#vista').innerHTML=tabs+comparativoHTML(p);$$('[data-pedir]').forEach(b=>b.onclick=()=>enviarTexto(textoPedido(p,b.dataset.pedir),contacto(b.dataset.pedir)))}
   else if(sub==='compras'){setFab(()=>formCompra(null,id));const L=[...pc].sort((a,b)=>{const o=x=>estadoCompra(x)==='por detallar'?0:1;return o(a)-o(b)||b.fecha.localeCompare(a.fecha)});
     $('#vista').innerHTML=tabs+(L.length?L.map(c=>'<a class="card card-main" href="#co/'+c.id+'"><div class="nom" style="font-size:16px">'+esc(c.proveedor||'(sin proveedor)')+' '+tagEst(c)+'</div><div class="sub">'+esc([c.id,fechaTxt(c.fecha),c.concepto].filter(Boolean).join(' · '))+'</div><div class="sub">'+(c.items||[]).length+' materiales'+(c.proyectoId!==id?' · compartida desde '+esc(nomProy(c.proyectoId)):'')+'</div></a>').join(''):vacio('Sin compras. Llegan solas desde el Control; también puedes registrar un pedido con <b>+</b>.'))}
@@ -849,22 +862,27 @@ function vCompra(id){const c=compra(id);if(!c){history.back();return}setTop('Com
   const recs=S.movs.filter(m=>m.compraId===c.id).sort((a,b)=>(b.fecha+b.creado).localeCompare(a.fecha+a.creado));
   $('#vista').innerHTML='<div class="card pad"><div class="nom">'+esc(c.proveedor||'(sin proveedor)')+' '+tagEst(c)+'</div><div class="sub">'+esc([fechaTxt(c.fecha),nomProy(c.proyectoId),c.categoria].filter(Boolean).join(' · '))+'</div>'+(c.concepto?'<p style="margin:6px 0 0">'+esc(c.concepto)+'</p>':'')+(c.local?'<div class="sub">Pedido registrado en la app (no viene del Control)</div>':'')+
     ((c.soportes||[]).length?'<div class="sub">Soportes: '+c.soportes.map(s=>s.url?'<a class="lnk" href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.nombre||'ver')+'</a>':esc(s.nombre||s)).join(', ')+'</div>':'')+'</div>'+
+    candidatosUnion(c).map(l=>'<div class="aviso">Parece el mismo pedido que <b>'+esc(l.id)+'</b> ('+esc(l.proveedor||'')+', '+fechaTxt(l.fecha)+(valorPedido(l)?', '+fmt$(valorPedido(l)):'')+', '+(l.items||[]).length+' materiales). Al unirlos se conservan los materiales y recepciones del pedido y quedan el id y el total del Control.<div class="fila" style="margin-bottom:0"><button class="btn chico" data-unir="'+l.id+'">Unir</button><button class="btn sec chico" data-nounir="'+l.id+'">No es el mismo</button></div></div>').join('')+
+    (c.local&&!c.unidoA?'<div class="aviso">Pedido local sin pagar: todavía no está en el Control. Cuando llegue la compra del Control, la app te propone unirlos.</div>':'')+
+    (c.unidoA?'<div class="aviso">Este pedido se unió a la compra <a class="lnk" href="#co/'+esc(c.unidoA)+'">'+esc(c.unidoA)+'</a>.</div>':'')+
     (e==='por detallar'?'<div class="aviso">Llegó del Control sin materiales. Agrégalos con sus cantidades, o márcala como "no aplica" si es mano de obra, transporte u otro gasto.</div>':'')+
     '<h3>Materiales</h3>'+(filas?'<div class="card pad"><table class="tabla"><tr><th>Material</th><th class="num">Comprado</th><th class="num">Recibido</th><th class="num">Pendiente</th></tr>'+filas+'</table></div>':vacio('Sin materiales.'))+flete+
-    '<div class="fila">'+(c.items&&c.items.length&&e!=='recibida'?'<button class="btn" id="rec">Recibir</button>':'')+'<button class="btn sec" id="det">'+((c.items||[]).length?'Editar materiales':'Agregar materiales')+'</button>'+(!(c.items||[]).length?'<button class="btn sec" id="na">'+(c.noAplica?'Sí aplica':'No aplica')+'</button>':'')+'</div>'+
+    (c.unidoA?'':'<div class="fila">'+(c.items&&c.items.length&&e!=='recibida'?'<button class="btn" id="rec">Recibir</button>':'')+'<button class="btn sec" id="det">'+((c.items||[]).length?'Editar materiales':'Agregar materiales')+'</button>'+(!(c.items||[]).length?'<button class="btn sec" id="na">'+(c.noAplica?'Sí aplica':'No aplica')+'</button>':'')+'</div>')+
     (recs.length?'<h3>Recepciones</h3><div class="card pad">'+recs.map(m=>'<div class="renglon"><span>'+fechaTxt(m.fecha)+' · '+esc(m.nombre||'')+'<br><span class="mut">'+esc(descMov(m))+' · '+esc(nomProy(m.proyectoId))+'</span></span><b>'+esc(cantMov(m))+'</b></div>').join('')+'</div>':'')+
-    (c.local?'<button class="btn peligro ancho" id="bo">Borrar pedido</button>':'');
-  const r=$('#rec');if(r)r.onclick=()=>formRecibir(c);$('#det').onclick=()=>formDetalleCompra(c);
+    (c.local&&!c.unidoA?'<button class="btn peligro ancho" id="bo">Borrar pedido</button>':'');
+  $$('[data-unir]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Unir el pedido '+b.dataset.unir+' con la compra '+c.id+'?'))return;await unirPedido(c.id,b.dataset.unir);toast('Unidos');render(false)});
+  $$('[data-nounir]').forEach(b=>b.onclick=async()=>{await guardar('compras',{...c,noUnir:[...(c.noUnir||[]),b.dataset.nounir]});render(false)});
+  const r=$('#rec');if(r)r.onclick=()=>formRecibir(c);const dt=$('#det');if(dt)dt.onclick=()=>formDetalleCompra(c);
   const na=$('#na');if(na)na.onclick=async()=>{await guardar('compras',{...c,noAplica:!c.noAplica});render(false)};
   const bo=$('#bo');if(bo)bo.onclick=async()=>{if(recs.length)return alert('Este pedido ya tiene recepciones; no se puede borrar.');if(!confirm('¿Borrar este pedido?'))return;await borrar('compras',c.id);history.back()}}
 function formCompra(c,pid){const nuevo=!c;c=c||{fecha:hoyISO(),proyectoId:pid||'',items:[],local:true};
   const provs=[...S.contactos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
   abrirModal('<form class="frm" id="fco"><h2>'+(nuevo?'Nuevo pedido':'Editar pedido')+'</h2><p class="mut">Las compras normales llegan solas desde el Control. Usa esto para un pedido que todavía no está en el Control.</p>'+
     '<label>Proveedor<input name="prov" list="dl-prov" required value="'+esc(c.proveedor)+'"></label><datalist id="dl-prov">'+provs.map(x=>'<option value="'+esc(x.nombre)+'">').join('')+'</datalist>'+
-    '<div class="dos"><label>Fecha<input type="date" name="fecha" value="'+c.fecha+'"></label><label>Proyecto'+selProy('proyectoId',c.proyectoId)+'</label></div><label>Concepto<input name="concepto" value="'+esc(c.concepto)+'"></label>'+
+    '<div class="dos"><label>Fecha<input type="date" name="fecha" value="'+c.fecha+'"></label><label>Proyecto'+selProy('proyectoId',c.proyectoId)+'</label></div><label>Concepto<input name="concepto" value="'+esc(c.concepto)+'"></label><label>Valor aproximado $ (para emparejar con el Control)<input name="valor" inputmode="numeric" value="'+(c.valor?Math.round(c.valor).toLocaleString('es-CO'):'')+'"></label>'+
     '<div class="botones"><button type="button" class="btn sec" data-cerrar>Cancelar</button><button class="btn">Seguir</button></div></form>',h=>{
     $('#fco',h).onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));let n=1;while(compra('L'+String(n).padStart(3,'0')))n++;
-      const o={...c,id:c.id||('L'+String(n).padStart(3,'0')),proveedor:v.prov.trim(),fecha:v.fecha,proyectoId:v.proyectoId,concepto:v.concepto.trim(),categoria:c.categoria||'Materiales'};
+      const o={...c,id:c.id||('L'+String(n).padStart(3,'0')),proveedor:v.prov.trim(),fecha:v.fecha,proyectoId:v.proyectoId,concepto:v.concepto.trim(),valor:parsePesos(v.valor)||0,categoria:c.categoria||'Materiales'};
       await guardar('compras',o);cerrarModal(()=>{location.hash='co/'+o.id;if(nuevo)setTimeout(()=>formDetalleCompra(compra(o.id)),200)})}})}
 function formDetalleCompra(c){const its=JSON.parse(JSON.stringify(c.items||[]));
   const fila=it=>{it=it||{};const m=it.materialId?material(it.materialId):null;const d=document.createElement('div');d.className='item';
@@ -1146,7 +1164,7 @@ async function revisarBuzon(manual){const clave=META.claveBuzon;if(!clave){if(ma
       const n=await aplicarCarga(o);if(n){for(const k in tot)tot[k]+=n[k];desc.push(c.desc||c.id)}
       hechos.add(c.id);await setMeta('buzonAplicados',[...hechos])}
     await setMeta('buzonRevisado',new Date().toISOString());
-    if(desc.length){alert('Llegó del buzón:\n• '+desc.join('\n• ')+'\n\nNuevos: '+txtConteo(tot)+'.');render(false)}else if(manual){toast('No hay nada nuevo');render(false)}
+    if(desc.length){const cu=comprasConCandidatos().length;alert('Llegó del buzón:\n• '+desc.join('\n• ')+'\n\nNuevos: '+txtConteo(tot)+'.'+(cu?'\n\n'+cu+' compra(s) del Control parecen pedidos locales que ya tienes: revísalas en Proyectos → Compras para unirlas.':''));render(false)}else if(manual){toast('No hay nada nuevo');render(false)}
   }catch(e){if(manual)alert(e.message);else toast(e.message)}finally{revisandoBuzon=false}}
 function configBuzon(){abrirModal('<form class="frm" id="fb"><h2>Buzón de Claude</h2><p class="mut">Claude deja las cargas cifradas en el repositorio y la app las suma sola al abrir con internet. Escribe la clave de Gestión de materiales que te dio Claude (se guarda solo en este celular).</p><label>Clave<input name="clave" autocomplete="off" value="'+esc(META.claveBuzon||'')+'"></label><div class="botones"><button type="button" class="btn sec" data-cerrar>Cancelar</button><button class="btn">Guardar y revisar</button></div></form>',h=>{
   $('#fb',h).onsubmit=async e=>{e.preventDefault();const v=e.target.clave.value.trim();await setMeta('claveBuzon',v);cerrarModal(()=>{render(false);if(v)revisarBuzon(true)})}})}
