@@ -1,5 +1,5 @@
 // Guarda la app en el celular para que abra sin señal.
-const CACHE = 'materiales-v1';
+const CACHE = 'materiales-v2';
 const ARCHIVOS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './qr.js'];
 
 self.addEventListener('install', e => {

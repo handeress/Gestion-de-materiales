@@ -12,6 +12,15 @@ Dirección: https://handeress.github.io/Gestion-de-materiales/
 - **Bodega**: inventario por ubicación, buscador de retales, muebles desarmados, movimientos y etiquetas QR (el botón QR de arriba escanea).
 - **Más**: buzón, respaldo, restaurar, sumar desde archivo, repetir migración, valor por categoría, ubicaciones y borrar ítems seleccionados.
 
+## Proyectos y compras (fase 2)
+
+- Cada material de la lista de un proyecto muestra 6 cantidades en la unidad base: **presupuestado** (con desperdicio), **comprado** (ítems de compras repartidos a ese proyecto), **recibido**, **usado** (solo materiales con "controlar uso"), **pendiente por recibir** y **falta por comprar** (en rojo si se compró de más).
+- Las compras llegan del Control "por detallar"; se les agregan materiales y cantidades, o se marcan "no aplica". También se puede registrar un pedido local.
+- Recepción parcial: se recibe lo que llegó y el resto queda pendiente (estados pedida, parcial, recibida).
+- Compra compartida: cada material lleva su reparto por proyecto (ej. Fontanar 12; Tibaná 8). Solo cantidades; el flete se reparte por valor como referencia. El valor oficial sigue siendo el del Control.
+- Traslados y devoluciones desde la ficha del material o del ítem; quedan en el historial de las dos ubicaciones.
+- Sobrantes: lo que queda en la ubicación de una obra se traslada a Bodega o a otro proyecto al cerrarla.
+
 ## Kardex
 
 La existencia nunca se escribe a mano: sale de sumar movimientos (`entrada`, `recepcion`, `salida`, `traslado`, `devolucion`, `ajuste`). Un movimiento no se edita; se corrige con un ajuste con nota.

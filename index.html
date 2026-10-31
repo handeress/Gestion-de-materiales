@@ -142,6 +142,7 @@ body.selmodo .card .marca{display:flex}
   .et .n{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 }
 .chips.sub{padding-top:2px}
+.seis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 10px;margin-top:8px}.seis div{display:flex;flex-direction:column;font-size:15px}.seis .mut{font-size:12px}.warn-tx{color:var(--warn)}.col6{cursor:pointer}
 
 </style>
 </head>
@@ -327,9 +328,9 @@ function descMov(m){const d=[];if(m.tipo==='entrada'||m.tipo==='recepcion')d.pus
 const cantMov=m=>{const s=m.tipo==='salida'||(m.tipo==='devolucion'&&m.destino==='proveedor')?-1:1;return (m.tipo==='ajuste'&&m.cant>0?'+':'')+fmtN(s*(+m.cant||0))+' '+(m.und||'')};
 
 /* ---------- navegación: 5 pestañas, cada una con sus secciones ---------- */
-const VISTAS={dir:vDir,c:vContacto,cot:vCots,q:vCot,mat:vMats,m:vMat,pre:vPrecios,pro:vPros,p:vPro,inv:vInv,i:vItem,ret:vRetal,kits:vKits,k:vKit,movs:vMovs,mas:vMas};
-const NAVMAP={c:'dir',cot:'dir',q:'dir',m:'mat',pre:'mat',p:'pro',i:'inv',ret:'inv',kits:'inv',k:'inv',movs:'inv'};
-const SUB={dir:[['dir','Directorio'],['cot','Cotizaciones']],mat:[['mat','Catálogo'],['pre','Precios de referencia']],inv:[['inv','Inventario'],['ret','Retal'],['kits','Desarmados'],['movs','Movimientos']]};
+const VISTAS={dir:vDir,c:vContacto,cot:vCots,q:vCot,mat:vMats,m:vMat,pre:vPrecios,pro:vPros,p:vPro,inv:vInv,i:vItem,ret:vRetal,kits:vKits,k:vKit,movs:vMovs,co:vCompra,exi:vExi,mas:vMas};
+const NAVMAP={c:'dir',cot:'dir',q:'dir',m:'mat',pre:'mat',p:'pro',i:'inv',ret:'inv',kits:'inv',k:'inv',movs:'inv',co:'pro',exi:'inv'};
+const SUB={dir:[['dir','Directorio'],['cot','Cotizaciones']],mat:[['mat','Catálogo'],['pre','Precios de referencia']],inv:[['inv','Inventario'],['ret','Retal'],['kits','Desarmados'],['exi','Existencias'],['movs','Movimientos']]};
 function render(scroll=true){const h=decodeURIComponent(location.hash.slice(1))||'dir';const [v,id,sub]=h.split('/');if(v!=='inv'&&v!==''&&selMode)salirSel();
   const fn=VISTAS[v]||vDir;fn(id,sub);const act=NAVMAP[v]||(VISTAS[v]?v:'dir');
   const g=SUB[act];if(g&&g.some(x=>x[0]===(VISTAS[v]?v:'dir'))&&!id)$('#vista').insertAdjacentHTML('afterbegin','<div class="chips sub">'+g.map(([k,t])=>'<a class="chip'+(k===(VISTAS[v]?v:'dir')?' on':'')+'" href="#'+k+'">'+t+'</a>').join('')+'</div>');
@@ -494,16 +495,6 @@ function formPro(p){const nuevo=!p;p=p||{};
   abrirModal('<form class="frm" id="fp"><h2>'+(nuevo?'Nuevo proyecto':'Editar proyecto')+'</h2><label>Nombre *<input name="nombre" required value="'+esc(p.nombre)+'"></label><div class="botones"><button type="button" class="btn sec" data-cerrar>Cancelar</button><button class="btn">Guardar</button></div>'+(nuevo||!p.local?'':'<button type="button" class="btn peligro ancho" id="bo">Borrar proyecto y su lista</button>')+'</form>',h=>{
     $('#fp',h).onsubmit=async e=>{e.preventDefault();const nom=e.target.nombre.value.trim();const o={estado:'activo',conPagina:false,local:true,...p,id:p.id||('l-'+slug(nom)),nombre:nom};if(nuevo&&proyecto(o.id))return alert('Ya existe un proyecto con ese nombre.');await guardar('proyectos',o);await asegurarUbicProyecto(o);cerrarModal(()=>{if(nuevo)location.hash='p/'+o.id;else render(false)})};
     const bo=$('#bo',h);if(bo)bo.onclick=async()=>{if(S.movs.some(m=>m.proyectoId===p.id)||S.items.some(i=>i.apartado===p.id))return alert('Este proyecto tiene movimientos o ítems apartados en bodega; no se puede borrar.');if(!confirm('¿Borrar '+p.nombre+'? Se borra su lista de materiales; las cotizaciones quedan como "General".'))return;for(const l of S.lista.filter(l=>l.proyectoId===p.id))await borrar('lista',l.id);for(const q of S.cotizaciones.filter(q=>q.proyectoId===p.id))await guardar('cotizaciones',{...q,proyectoId:''});await borrar('proyectos',p.id);cerrarModal(()=>{location.hash='pro'})}})}
-function vPro(id,sub){const p=proyecto(id);if(!p){location.hash='pro';return}sub=sub||'lista';setTop(p.nombre,true);
-  const tabs='<div class="chips"><a class="chip '+(sub==='lista'?'on':'')+'" href="#p/'+id+'/lista">Lista de materiales</a><a class="chip '+(sub==='comp'?'on':'')+'" href="#p/'+id+'/comp">Comparativo de precios</a><button class="chip" id="edp">Editar</button></div>';
-  if(sub==='comp'){setFab(null);$('#vista').innerHTML=tabs+comparativoHTML(p);
-    $$('[data-pedir]').forEach(b=>b.onclick=()=>enviarTexto(textoPedido(p,b.dataset.pedir),contacto(b.dataset.pedir)))}
-  else{setFab(()=>formLista(id));const ls=S.lista.filter(l=>l.proyectoId===id).map(l=>({l,m:material(l.materialId)})).filter(x=>x.m).sort((a,b)=>a.m.nombre.localeCompare(b.m.nombre,'es'));
-    $('#vista').innerHTML=tabs+'<div class="fila"><button class="btn sec" id="imp">'+ic.up+' Importar CSV</button><button class="btn wa" id="pc">'+ic.wa+' Pedir cotización</button></div>'+
-    (ls.length?'<div class="card pad"><table class="tabla"><tr><th>Material</th><th class="num">Cant.</th><th class="num">Desp.</th><th class="num">Total</th></tr>'+ls.map(({l,m})=>{const al=l.und&&norm(l.und)!==norm(m.unidad);return '<tr data-l="'+l.id+'" style="cursor:pointer"><td>'+esc(m.nombre)+(al?'<div><span class="tag warn">⚠ lista en '+esc(l.und)+', catálogo en '+esc(m.unidad)+'</span></div>':'')+'</td><td class="num">'+fmtN(l.cant)+'</td><td class="num">'+(l.desp?fmtN(l.desp)+'%':'—')+'</td><td class="num"><b>'+fmtN(l.cant*(1+(l.desp||0)/100))+'</b> '+esc(l.und||m.unidad)+'</td></tr>'}).join('')+'</table></div><p class="mut">Toca un renglón para editarlo.</p>':vacio('Lista vacía.<br>Importa el CSV de la tabla de cantidades de Revit o agrega materiales con <b>+</b>.'));
-    $$('[data-l]').forEach(tr=>tr.onclick=()=>formLista(id,S.lista.find(x=>x.id===tr.dataset.l)));
-    $('#imp').onclick=()=>formCSV(id);$('#pc').onclick=()=>{if(!ls.length)return toast('La lista está vacía');enviarTexto(textoCotizar(p))}}
-  $('#edp').onclick=()=>formPro(p)}
 function formLista(pid,l){const nuevo=!l;l=l||{desp:0};const m0=l.materialId?material(l.materialId):null;
   abrirModal('<form class="frm" id="fl"><h2>'+(nuevo?'Agregar material':'Editar renglón')+'</h2><label>Material *<input name="mat" list="dl-mat" required value="'+esc(m0?m0.nombre:'')+'"></label>'+
   '<div class="tres"><label>Cantidad<input name="cant" inputmode="decimal" required value="'+(l.cant!=null?String(Math.round(l.cant*1000)/1000).replace('.',','):'')+'"></label><label>Unidad<input name="und" list="dl-und" value="'+esc(l.und||(m0?m0.unidad:''))+'"></label><label>Desperdicio %<input name="desp" inputmode="decimal" value="'+(l.desp||0)+'"></label></div>'+
@@ -631,14 +622,14 @@ function vItem(id){const it=item(id);if(!it){location.hash='inv';return}setTop(i
     '<div class="card pad"><div class="cod mut">'+esc(it.cod)+' · '+esc(c.n)+'</div><div class="nom" style="font-size:20px">'+esc(it.nombre)+'</div>'+tagsItem(it)+
     '<div class="renglon" style="margin-top:8px"><span>Valor</span><b class="grande">'+(v.sin?'—':fmt$(v.total))+'</b></div><div class="mut" style="font-size:13px">'+vtxt+'</div></div>'+
     '<div class="card pad"><dl class="dl">'+fila('Cantidad',esc(fmtN(it.cant)+' '+(it.und||'und')))+fila('Medidas',esc(fmtDims(it)))+fila('Material',esc(it.material))+fila('Color/acabado',esc(it.color))+
-    (c.resto?fila('Queda',esc((RESTOS.find(r=>r[0]==it.resto)||[0,'Lleno'])[1])):'')+fila('Ubicación',esc(it.ubic))+fila('Estado',esc(it.estado))+fila('Origen',esc(it.origen))+
+    (c.resto?fila('Queda',esc((RESTOS.find(r=>r[0]==it.resto)||[0,'Lleno'])[1])):'')+fila('Ubicación',esc((x=>x.length>1?x.map(y=>nomUbic(y[0])+' '+fmtN(y[1])).join(' · '):it.ubic)(existPorUbic('i:'+it.id).filter(y=>y[1]>1e-9))))+fila('Estado',esc(it.estado))+fila('Origen',esc(it.origen))+
     (k?fila('Mueble',' <a class="lnk" href="#k/'+k.id+'">'+esc(k.nombre)+'</a>'+(it.pieza?' · pieza: '+esc(it.pieza):'')):'')+fila('Etiqueta',esc(it.etiqueta))+fila('Notas',esc(it.notas).replace(/\n/g,'<br>'))+'</dl></div>'+
     '<div class="fila"><button class="btn" id="sal">'+ic.out+' Sacar a obra</button>'+(c.dims&&it.largo>0?'<button class="btn" id="cor">'+ic.cut+' Usé una parte</button>':'')+'</div>'+
-    '<div class="fila"><button class="btn sec" id="aj">Ajustar conteo</button><button class="btn sec" id="ed">Editar</button><button class="btn sec" id="et">'+ic.qr+' Etiqueta</button><button class="btn sec" id="dup">Duplicar</button></div>'+
+    '<div class="fila"><button class="btn sec" id="tr">Trasladar</button><button class="btn sec" id="dv">Devolver</button><button class="btn sec" id="aj">Ajustar conteo</button><button class="btn sec" id="ed">Editar</button><button class="btn sec" id="et">'+ic.qr+' Etiqueta</button><button class="btn sec" id="dup">Duplicar</button></div>'+
     (movs.length?'<h3>Movimientos</h3><div class="card pad">'+movs.map(m=>'<div class="renglon"><span>'+fechaTxt(m.fecha)+' · '+esc(descMov(m))+'<br><span class="mut">'+esc(m.nota||'')+'</span></span><span class="num"><b>'+esc(cantMov(m))+'</b>'+(m.valor?'<div class="mut">'+fmt$(m.valor)+'</div>':'')+'</span></div>').join('')+'</div>':'')+
     '<button class="btn peligro ancho" id="del" style="margin-top:18px">Borrar del inventario</button>';
   $$('[data-ver]').forEach(e=>e.onclick=()=>verFoto(e.dataset.ver));pintarFotos();
-  $('#aj').onclick=()=>formAjuste(it);$('#ed').onclick=()=>formItem(it);$('#sal').onclick=()=>formSalida(it);const co=$('#cor');if(co)co.onclick=()=>formCorte(it);
+  $('#aj').onclick=()=>formAjuste(it);$('#tr').onclick=()=>formMovItem(it,'traslado');$('#dv').onclick=()=>formMovItem(it,'devolucion');$('#ed').onclick=()=>formItem(it);$('#sal').onclick=()=>formSalida(it);const co=$('#cor');if(co)co.onclick=()=>formCorte(it);
   $('#et').onclick=()=>imprimirEtiquetas([it]);
   $('#dup').onclick=()=>{const n=JSON.parse(JSON.stringify(it));delete n.id;n.cod='';n.fotos=[];formItem(n,true)};
   $('#del').onclick=async()=>{if(!confirm('¿Borrar '+it.cod+' – '+it.nombre+'? Si lo usaste en obra mejor usa "Sacar a obra" para que quede el registro.'))return;for(const f of (it.fotos||[]))await dbDel('fotos',f);await borrar('items',it.id);toast('Borrado');history.back()}}
@@ -806,6 +797,173 @@ async function escanear(){if(!('BarcodeDetector' in window))return alert('Este n
     try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=$('#cam',h);v.srcObject=camStream;await v.play();const det=new BarcodeDetector({formats:['qr_code']});
       camTimer=setInterval(async()=>{try{const r=await det.detect(v);if(r[0]){const m=r[0].rawValue.match(/#i\/([\w]+)/);if(m&&item(m[1])){pararCam();cerrarModal(()=>{location.hash='i/'+m[1]})}else toast('Ese QR no es de este inventario')}}catch(e){}},400)}
     catch(e){alert('No se pudo abrir la cámara: '+e.message)}})}
+/* ===== fase 2 ===== */
+/* ===== FASE 2: compras en cantidades, recepción parcial, traslados, sobrantes y las 6 columnas ===== */
+const compra=id=>S.compras.find(x=>x.id===id);
+const baseCant=it=>(+it.cant||0)*(+it.factor>0?+it.factor:1);           // cantidad del ítem en la unidad base del material
+const reparto=(c,it)=>(it.reparto&&it.reparto.length)?it.reparto:[{proyectoId:c.proyectoId,cant:baseCant(it)}];
+const recibidoCompra=(cid,mid,pid)=>S.movs.filter(m=>m.compraId===cid&&m.materialId===mid&&(m.tipo==='entrada'||m.tipo==='recepcion')&&(!pid||m.proyectoId===pid)).reduce((s,m)=>s+(+m.cant||0),0);
+function estadoCompra(c){if(c.noAplica)return'no aplica';if(!(c.items||[]).length)return'por detallar';
+  let tot=0,rec=0;for(const it of c.items){tot+=baseCant(it);rec+=Math.min(recibidoCompra(c.id,it.materialId),baseCant(it))}
+  return rec<=1e-9?'pedida':rec+1e-9<tot?'parcial':'recibida'}
+const TAG_EST={'por detallar':'warn','pedida':'','parcial':'warn','recibida':'ok','no aplica':''};
+const tagEst=c=>{const e=estadoCompra(c);return '<span class="tag '+TAG_EST[e]+'">'+e[0].toUpperCase()+e.slice(1)+'</span>'};
+const comprasDe=pid=>S.compras.filter(c=>c.proyectoId===pid||(c.items||[]).some(it=>reparto(c,it).some(r=>r.proyectoId===pid)));
+
+/* Las 6 columnas de cada material de un proyecto, en la unidad base */
+function columnas(pid){const R={};const fila=mid=>R[mid]||(R[mid]={mid,pres:0,comp:0,rec:0,usado:0,lista:null});
+  for(const l of S.lista.filter(l=>l.proyectoId===pid)){const r=fila(l.materialId);r.pres+=(+l.cant||0)*(1+(l.desp||0)/100);r.lista=l}
+  for(const c of S.compras)if(!c.noAplica)for(const it of (c.items||[]))for(const rp of reparto(c,it))if(rp.proyectoId===pid)fila(it.materialId).comp+=+rp.cant||0;
+  for(const m of S.movs)if(m.materialId&&m.proyectoId===pid){
+    if((m.tipo==='entrada'||m.tipo==='recepcion')&&m.compraId)fila(m.materialId).rec+=+m.cant||0;
+    if(m.tipo==='salida')fila(m.materialId).usado+=+m.cant||0}
+  return Object.values(R).map(r=>{const m=material(r.mid);return m?{...r,m,pend:r.comp-r.rec,falta:r.pres-r.comp,controla:!!m.controlarUso}:null}).filter(Boolean).sort((a,b)=>a.m.nombre.localeCompare(b.m.nombre,'es'))}
+const n2=v=>fmtN(Math.round(v*100)/100);
+
+/* ---------- PROYECTO: lista con 6 columnas, compras, comparativo, sobrantes ---------- */
+function vPro(id,sub){const p=proyecto(id);if(!p){location.hash='pro';return}sub=sub||'lista';setTop(p.nombre,true);
+  const pc=comprasDe(id),pd=pc.filter(c=>estadoCompra(c)==='por detallar').length;
+  const tabs='<div class="chips">'+[['lista','Lista de materiales'],['compras','Compras'+(pc.length?' '+pc.length:'')],['comp','Comparativo'],['sob','Sobrantes']].map(([k,t])=>'<a class="chip '+(sub===k?'on':'')+'" href="#p/'+id+'/'+k+'">'+t+'</a>').join('')+'<button class="chip" id="edp">Editar</button></div>'+
+    (pd&&sub!=='compras'?'<div class="aviso">'+pd+' compra(s) por detallar: agrega los materiales para que cuenten. <a class="lnk" href="#p/'+id+'/compras">Ver</a></div>':'')+(p.estado==='cerrado'?'<div class="aviso">Proyecto cerrado.</div>':'');
+  if(sub==='comp'){setFab(null);$('#vista').innerHTML=tabs+comparativoHTML(p);$$('[data-pedir]').forEach(b=>b.onclick=()=>enviarTexto(textoPedido(p,b.dataset.pedir),contacto(b.dataset.pedir)))}
+  else if(sub==='compras'){setFab(()=>formCompra(null,id));const L=[...pc].sort((a,b)=>{const o=x=>estadoCompra(x)==='por detallar'?0:1;return o(a)-o(b)||b.fecha.localeCompare(a.fecha)});
+    $('#vista').innerHTML=tabs+(L.length?L.map(c=>'<a class="card card-main" href="#co/'+c.id+'"><div class="nom" style="font-size:16px">'+esc(c.proveedor||'(sin proveedor)')+' '+tagEst(c)+'</div><div class="sub">'+esc([c.id,fechaTxt(c.fecha),c.concepto].filter(Boolean).join(' · '))+'</div><div class="sub">'+(c.items||[]).length+' materiales'+(c.proyectoId!==id?' · compartida desde '+esc(nomProy(c.proyectoId)):'')+'</div></a>').join(''):vacio('Sin compras. Llegan solas desde el Control; también puedes registrar un pedido con <b>+</b>.'))}
+  else if(sub==='sob'){setFab(null);$('#vista').innerHTML=tabs+sobrantesHTML(p);const bt=$('#trs');if(bt)bt.onclick=()=>formTrasladoSobrantes(p);const bc=$('#cer');if(bc)bc.onclick=async()=>{if(!confirm('¿Marcar '+p.nombre+' como cerrado?'))return;await guardar('proyectos',{...p,estado:'cerrado'});render(false)}}
+  else{setFab(()=>formLista(id));const C=columnas(id);
+    $('#vista').innerHTML=tabs+'<div class="fila"><button class="btn sec" id="imp">'+ic.up+' Importar CSV</button><button class="btn wa" id="pc">'+ic.wa+' Pedir cotización</button></div>'+
+    (C.length?C.map(r=>{const u=esc(r.m.unidad);const al=r.lista&&r.lista.und&&norm(r.lista.und)!==norm(r.m.unidad);
+      const cel=(t,v,cls)=>'<div><span class="mut">'+t+'</span><b class="'+(cls||'')+'">'+v+'</b></div>';
+      return '<div class="card pad col6"'+(r.lista?' data-l="'+r.lista.id+'"':'')+'><div class="nom" style="font-size:15px">'+esc(r.m.nombre)+' <span class="mut">('+u+')</span></div>'+(al?'<span class="tag warn">⚠ lista en '+esc(r.lista.und)+', catálogo en '+u+'</span>':'')+
+        '<div class="seis">'+cel('Presupuestado',n2(r.pres))+cel('Comprado',n2(r.comp))+cel('Recibido',n2(r.rec))+cel('Usado',r.controla?n2(r.usado):'—')+cel('Pendiente',n2(r.pend),r.pend>1e-9?'warn-tx':'')+cel('Falta comprar',n2(r.falta),r.falta<-1e-9?'bad-ic':'')+'</div></div>'}).join('')+'<p class="mut">Cantidades en la unidad base. Falta comprar en rojo = se compró de más. Toca un renglón de la lista para editarlo.</p>'
+    :vacio('Lista vacía.<br>Importa el CSV de la tabla de cantidades de Revit o agrega materiales con <b>+</b>.'));
+    $$('[data-l]').forEach(tr=>tr.onclick=()=>formLista(id,S.lista.find(x=>x.id===tr.dataset.l)));
+    $('#imp').onclick=()=>formCSV(id);$('#pc').onclick=()=>{if(!S.lista.some(l=>l.proyectoId===id))return toast('La lista está vacía');enviarTexto(textoCotizar(p))}}
+  $('#edp').onclick=()=>formPro(p)}
+
+/* ---------- COMPRA: detalle, reparto entre proyectos y recepción ---------- */
+function vCompra(id){const c=compra(id);if(!c){history.back();return}setTop('Compra '+c.id,true);setFab(null);const e=estadoCompra(c);
+  const filas=(c.items||[]).map((it,k)=>{const m=material(it.materialId);const b=baseCant(it);const rec=recibidoCompra(c.id,it.materialId);
+    return '<tr><td>'+esc(m?m.nombre:'?')+(it.factor&&it.factor!==1?'<div class="mut">'+n2(it.cant)+' '+esc(it.und)+' = '+n2(b)+' '+esc(m?m.unidad:'')+'</div>':'')+(reparto(c,it).length>1||reparto(c,it)[0].proyectoId!==c.proyectoId?'<div class="mut">'+reparto(c,it).map(r=>esc(nomProy(r.proyectoId))+' '+n2(r.cant)).join(' · ')+'</div>':'')+'</td><td class="num">'+n2(b)+'</td><td class="num">'+n2(rec)+'</td><td class="num">'+n2(Math.max(0,b-rec))+'</td></tr>'}).join('');
+  const fl=+c.flete||0;let flete='';if(fl&&(c.items||[]).some(it=>+it.precio>0)){const V={};let tv=0;for(const it of c.items){const vu=(+it.precio||0)/(+it.factor>0?+it.factor:1);for(const r of reparto(c,it)){const v=vu*(+r.cant||0);V[r.proyectoId]=(V[r.proyectoId]||0)+v;tv+=v}}
+    if(tv>0)flete='<h3>Flete de referencia</h3><div class="card pad">'+Object.entries(V).map(([p,v])=>'<div class="renglon"><span>'+esc(nomProy(p))+'</span><b>'+fmt$(fl*v/tv)+'</b></div>').join('')+'<p class="mut" style="margin:6px 0 0">Repartido en proporción al valor. Solo referencia: el valor oficial de cada proyecto es el del Control.</p></div>'}
+  const recs=S.movs.filter(m=>m.compraId===c.id).sort((a,b)=>(b.fecha+b.creado).localeCompare(a.fecha+a.creado));
+  $('#vista').innerHTML='<div class="card pad"><div class="nom">'+esc(c.proveedor||'(sin proveedor)')+' '+tagEst(c)+'</div><div class="sub">'+esc([fechaTxt(c.fecha),nomProy(c.proyectoId),c.categoria].filter(Boolean).join(' · '))+'</div>'+(c.concepto?'<p style="margin:6px 0 0">'+esc(c.concepto)+'</p>':'')+(c.local?'<div class="sub">Pedido registrado en la app (no viene del Control)</div>':'')+
+    ((c.soportes||[]).length?'<div class="sub">Soportes: '+c.soportes.map(s=>s.url?'<a class="lnk" href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.nombre||'ver')+'</a>':esc(s.nombre||s)).join(', ')+'</div>':'')+'</div>'+
+    (e==='por detallar'?'<div class="aviso">Llegó del Control sin materiales. Agrégalos con sus cantidades, o márcala como "no aplica" si es mano de obra, transporte u otro gasto.</div>':'')+
+    '<h3>Materiales</h3>'+(filas?'<div class="card pad"><table class="tabla"><tr><th>Material</th><th class="num">Comprado</th><th class="num">Recibido</th><th class="num">Pendiente</th></tr>'+filas+'</table></div>':vacio('Sin materiales.'))+flete+
+    '<div class="fila">'+(c.items&&c.items.length&&e!=='recibida'?'<button class="btn" id="rec">Recibir</button>':'')+'<button class="btn sec" id="det">'+((c.items||[]).length?'Editar materiales':'Agregar materiales')+'</button>'+(!(c.items||[]).length?'<button class="btn sec" id="na">'+(c.noAplica?'Sí aplica':'No aplica')+'</button>':'')+'</div>'+
+    (recs.length?'<h3>Recepciones</h3><div class="card pad">'+recs.map(m=>'<div class="renglon"><span>'+fechaTxt(m.fecha)+' · '+esc(m.nombre||'')+'<br><span class="mut">'+esc(descMov(m))+' · '+esc(nomProy(m.proyectoId))+'</span></span><b>'+esc(cantMov(m))+'</b></div>').join('')+'</div>':'')+
+    (c.local?'<button class="btn peligro ancho" id="bo">Borrar pedido</button>':'');
+  const r=$('#rec');if(r)r.onclick=()=>formRecibir(c);$('#det').onclick=()=>formDetalleCompra(c);
+  const na=$('#na');if(na)na.onclick=async()=>{await guardar('compras',{...c,noAplica:!c.noAplica});render(false)};
+  const bo=$('#bo');if(bo)bo.onclick=async()=>{if(recs.length)return alert('Este pedido ya tiene recepciones; no se puede borrar.');if(!confirm('¿Borrar este pedido?'))return;await borrar('compras',c.id);history.back()}}
+function formCompra(c,pid){const nuevo=!c;c=c||{fecha:hoyISO(),proyectoId:pid||'',items:[],local:true};
+  const provs=[...S.contactos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  abrirModal('<form class="frm" id="fco"><h2>'+(nuevo?'Nuevo pedido':'Editar pedido')+'</h2><p class="mut">Las compras normales llegan solas desde el Control. Usa esto para un pedido que todavía no está en el Control.</p>'+
+    '<label>Proveedor<input name="prov" list="dl-prov" required value="'+esc(c.proveedor)+'"></label><datalist id="dl-prov">'+provs.map(x=>'<option value="'+esc(x.nombre)+'">').join('')+'</datalist>'+
+    '<div class="dos"><label>Fecha<input type="date" name="fecha" value="'+c.fecha+'"></label><label>Proyecto'+selProy('proyectoId',c.proyectoId)+'</label></div><label>Concepto<input name="concepto" value="'+esc(c.concepto)+'"></label>'+
+    '<div class="botones"><button type="button" class="btn sec" data-cerrar>Cancelar</button><button class="btn">Seguir</button></div></form>',h=>{
+    $('#fco',h).onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));let n=1;while(compra('L'+String(n).padStart(3,'0')))n++;
+      const o={...c,id:c.id||('L'+String(n).padStart(3,'0')),proveedor:v.prov.trim(),fecha:v.fecha,proyectoId:v.proyectoId,concepto:v.concepto.trim(),categoria:c.categoria||'Materiales'};
+      await guardar('compras',o);cerrarModal(()=>{location.hash='co/'+o.id;if(nuevo)setTimeout(()=>formDetalleCompra(compra(o.id)),200)})}})}
+function formDetalleCompra(c){const its=JSON.parse(JSON.stringify(c.items||[]));
+  const fila=it=>{it=it||{};const m=it.materialId?material(it.materialId):null;const d=document.createElement('div');d.className='item';
+    const rp=it.reparto&&it.reparto.length>1||(it.reparto&&it.reparto[0]&&it.reparto[0].proyectoId!==c.proyectoId)?it.reparto:null;
+    d.innerHTML='<input name="mat" list="dl-mat" placeholder="Material" value="'+esc(m?m.nombre:'')+'">'+
+      '<div class="tres"><input name="cant" inputmode="decimal" placeholder="Cant." value="'+(it.cant!=null?String(it.cant).replace('.',','):'')+'"><input name="und" list="dl-und" placeholder="Unidad" value="'+esc(it.und||'')+'"><input name="precio" inputmode="numeric" placeholder="$ unit. (opc.)" value="'+(it.precio?Math.round(it.precio).toLocaleString('es-CO'):'')+'"></div>'+
+      '<div class="tres"><span class="fac" hidden>1 <b class="u1"></b> =<input name="factor" inputmode="decimal" value="'+String(it.factor||1).replace('.',',')+'"><b class="ub"></b></span><input name="rep" placeholder="Reparto: Fontanar 12; Tibaná 8" value="'+esc(rp?rp.map(r=>nomProy(r.proyectoId)+' '+String(r.cant).replace('.',',')).join('; '):'')+'"><button type="button" class="x" aria-label="Quitar">✕</button></div>';
+    const g=n=>d.querySelector('[name='+n+']');const upd=()=>{const mm=matPorNombre(g('mat').value);const u=g('und').value.trim();const fac=d.querySelector('.fac');if(mm&&u&&norm(u)!==norm(mm.unidad)){fac.hidden=false;fac.querySelector('.u1').textContent=u;fac.querySelector('.ub').textContent=mm.unidad}else{fac.hidden=true;g('factor').value=1}};
+    g('mat').addEventListener('change',()=>{const mm=matPorNombre(g('mat').value);if(mm&&!g('und').value.trim())g('und').value=mm.unidad;upd()});g('und').addEventListener('input',upd);
+    d.querySelector('.x').onclick=()=>d.remove();upd();return d};
+  abrirModal('<form class="frm" id="fdc"><h2>Materiales de '+esc(c.proveedor||c.id)+'</h2><p class="mut">Cantidades compradas. Si la compra se reparte entre proyectos, escribe el reparto en la unidad base (ej. <b>Fontanar 12; Tibaná 8</b>); vacío = todo para '+esc(nomProy(c.proyectoId))+'.</p>'+
+    '<div id="its"></div><button type="button" class="btn sec ancho" id="addi">+ Material</button><label>Flete de la compra $ (opcional, solo referencia)<input name="flete" inputmode="numeric" value="'+(c.flete?Math.round(c.flete).toLocaleString('es-CO'):'')+'"></label>'+
+    '<div class="botones"><button type="button" class="btn sec" data-cerrar>Cancelar</button><button class="btn">Guardar</button></div></form>',h=>{
+    const box=$('#its',h);its.forEach(it=>box.append(fila(it)));if(!its.length)box.append(fila());$('#addi',h).onclick=()=>box.append(fila());
+    $('#fdc',h).onsubmit=async e=>{e.preventDefault();const out=[];
+      for(const d of $$('.item',h)){const g=n=>d.querySelector('[name='+n+']').value.trim();if(!g('mat'))continue;const cant=parseNum(g('cant'));if(!(cant>0))return alert('Falta la cantidad de '+g('mat'));
+        const ex=matPorNombre(g('mat'));const und=g('und')||(ex?ex.unidad:'und');const mid=await materialId(g('mat'),und);const mm=material(mid);const factor=norm(und)===norm(mm.unidad)?1:(parseNum(g('factor'))||1);
+        const o={materialId:mid,cant,und,factor,precio:parsePesos(g('precio'))||null};const b=cant*factor;
+        if(g('rep')){const rp=[];for(const parte of g('rep').split(/[;\n]/).map(s=>s.trim()).filter(Boolean)){const mt=parte.match(/^(.*?)\s+([\d.,]+)\s*$/);if(!mt)return alert('No entiendo el reparto "'+parte+'". Escribe proyecto y cantidad, ej. Fontanar 12');
+            const pr=proyectoPorNombre(mt[1]);if(!pr)return alert('No encuentro el proyecto "'+mt[1]+'"');rp.push({proyectoId:pr.id,cant:parseNum(mt[2])})}
+          const s=rp.reduce((a,r)=>a+r.cant,0);if(Math.abs(s-b)>1e-6&&!confirm('El reparto de '+mm.nombre+' suma '+n2(s)+' y la compra es '+n2(b)+' '+mm.unidad+'. ¿Guardar igual?'))return;o.reparto=rp}
+        out.push(o)}
+      for(const it of c.items||[])if(!out.some(o=>o.materialId===it.materialId)&&recibidoCompra(c.id,it.materialId)>0)return alert('Ya se recibió algo de '+((material(it.materialId)||{}).nombre||'un material')+'; no lo puedes quitar.');
+      await guardar('compras',{...c,items:out,noAplica:false,flete:parsePesos(e.target.flete.value)||0});refrescarListas();cerrarModal(()=>render(false))}})}
+async function formRecibir(c){const filas=[];for(const it of c.items)for(const r of reparto(c,it)){const pend=(+r.cant||0)-recibidoCompra(c.id,it.materialId,r.proyectoId);if(pend>1e-9)filas.push({it,r,pend})}
+  if(!filas.length)return toast('Ya se recibió todo');
+  const ubs=S.ubicaciones.filter(u=>u.id!=='u-sin');const ubOpts=sel=>opts(ubs.map(u=>[u.id,u.nombre+(u.tipo==='proyecto'?' (obra)':'')]),sel);
+  abrirModal('<form class="frm" id="frc"><h2>Recibir</h2><p class="mut">Escribe lo que llegó. Si llegó parte, queda pendiente el resto.</p>'+
+    filas.map((f,k)=>{const m=material(f.it.materialId);return '<div class="item"><b>'+esc(m.nombre)+'</b><div class="mut">'+esc(nomProy(f.r.proyectoId))+' · pendiente '+n2(f.pend)+' '+esc(m.unidad)+'</div><div class="dos"><label>Llegó<input name="c'+k+'" inputmode="decimal" value="'+String(Math.round(f.pend*1000)/1000).replace('.',',')+'"></label><label>Dónde<select name="u'+k+'">'+ubOpts(ubicDeProyecto(f.r.proyectoId))+'</select></label></div></div>'}).join('')+
+    '<div class="dos"><label>Fecha<input type="date" name="fecha" value="'+hoyISO()+'"></label><label>Nota<input name="nota" placeholder="Remisión, quién recibió…"></label></div>'+
+    '<div class="botones"><button type="button" class="btn sec" data-cerrar>Cancelar</button><button class="btn">Registrar</button></div></form>',h=>{
+    $('#frc',h).onsubmit=async e=>{e.preventDefault();const f=e.target;let n=0;const llegan=filas.map((x,k)=>({...x,c:Math.min(parseNum(f['c'+k].value)||0,x.pend),u:f['u'+k].value}));
+      const total=llegan.reduce((s,x)=>s+x.c,0),pend=filas.reduce((s,x)=>s+x.pend,0);
+      for(const x of llegan){if(!(x.c>0))continue;await mov({tipo:total+1e-9<pend?'recepcion':'entrada',materialId:x.it.materialId,cant:x.c,und:material(x.it.materialId).unidad,destino:x.u,proyectoId:x.r.proyectoId,compraId:c.id,fecha:f.fecha.value,nota:f.nota.value.trim()});n++}
+      cerrarModal(()=>{render(false);toast(n?'Recepción registrada':'No se registró nada')})}})}
+
+/* ---------- MOVIMIENTOS de un material o un ítem: recibir, sacar, trasladar, devolver, ajustar ---------- */
+function formMovMat(m,tipo){const k='m:'+m.id;const ex=existPorUbic(k);const conEx=ex.filter(x=>x[1]>1e-9);
+  const ubs=S.ubicaciones.filter(u=>u.id!=='u-sin');const ubO=(sel,lista)=>opts((lista||ubs.map(u=>u.id)).map(id=>[id,nomUbic(id)+' ('+n2((EXI[k]||{})[id]||0)+')']),sel);
+  const T={recibir:'Recibir sin compra',salida:'Sacar a obra',traslado:'Trasladar',devolucion:'Devolver',ajuste:'Ajustar conteo'}[tipo];
+  if(tipo!=='recibir'&&tipo!=='ajuste'&&!conEx.length)return alert('No hay existencia de '+m.nombre+' en ninguna ubicación.');
+  abrirModal('<form class="frm" id="fmm"><h2>'+T+'</h2><p class="mut">'+esc(m.nombre)+' · en '+esc(m.unidad)+'</p>'+
+    (tipo==='recibir'?'<label>Dónde<select name="dest">'+ubO('')+'</select></label><label>Proyecto (opcional)'+selProy('pid','','— ninguno —')+'</label>':'')+
+    (tipo==='salida'?'<label>Desde<select name="orig">'+ubO(conEx[0][0],conEx.map(x=>x[0]))+'</select></label><label>Proyecto'+selProy('pid',(ubicacion(conEx[0][0])||{}).proyectoId||'')+'</label>':'')+
+    (tipo==='traslado'?'<div class="dos"><label>Desde<select name="orig">'+ubO(conEx[0][0],conEx.map(x=>x[0]))+'</select></label><label>Hacia<select name="dest">'+ubO('')+'</select></label></div>':'')+
+    (tipo==='devolucion'?'<div class="dos"><label>Desde<select name="orig">'+ubO(conEx[0][0],conEx.map(x=>x[0]))+'</select></label><label>A<select name="dest"><option value="proveedor">Proveedor</option>'+opts(S.ubicaciones.filter(u=>u.tipo==='bodega'&&u.id!=='u-sin').map(u=>[u.id,u.nombre]),'')+'</select></label></div>':'')+
+    (tipo==='ajuste'?'<label>Ubicación<select name="dest">'+ubO(conEx.length?conEx[0][0]:'')+'</select></label>':'')+
+    '<div class="dos"><label>'+(tipo==='ajuste'?'Conteo físico':'Cantidad')+'<input name="cant" inputmode="decimal" required></label><label>Fecha<input type="date" name="fecha" value="'+hoyISO()+'"></label></div>'+
+    '<label>Nota'+(tipo==='ajuste'?' (obligatoria)':'')+'<input name="nota"'+(tipo==='ajuste'?' required':'')+'></label>'+
+    '<div class="botones"><button type="button" class="btn sec" data-cerrar>Cancelar</button><button class="btn">Registrar</button></div></form>',h=>{
+    $('#fmm',h).onsubmit=async e=>{e.preventDefault();const f=e.target;const c=parseNum(f.cant.value);if(!(c>=0)||(tipo!=='ajuste'&&!(c>0)))return alert('Cantidad no válida');
+      const o={materialId:m.id,und:m.unidad,fecha:f.fecha.value,nota:f.nota.value.trim()};
+      if(tipo!=='recibir'&&tipo!=='ajuste'){const hay=(EXI[k]||{})[f.orig.value]||0;if(c>hay+1e-9)return alert('En '+nomUbic(f.orig.value)+' solo hay '+n2(hay)+' '+m.unidad+'.')}
+      if(tipo==='recibir')await mov({...o,tipo:'entrada',cant:c,destino:f.dest.value,proyectoId:f.pid.value});
+      else if(tipo==='salida'){if(!f.pid.value)return alert('Elige el proyecto');await mov({...o,tipo:'salida',cant:c,origen:f.orig.value,proyectoId:f.pid.value})}
+      else if(tipo==='traslado'){if(f.dest.value===f.orig.value)return alert('Origen y destino son iguales');await mov({...o,tipo:'traslado',cant:c,origen:f.orig.value,destino:f.dest.value})}
+      else if(tipo==='devolucion')await mov({...o,tipo:'devolucion',cant:c,origen:f.orig.value,destino:f.dest.value});
+      else{const dif=c-((EXI[k]||{})[f.dest.value]||0);if(Math.abs(dif)<1e-9)return cerrarModal(()=>toast('Sin diferencia'));await mov({...o,tipo:'ajuste',cant:Math.round(dif*1000)/1000,destino:f.dest.value})}
+      cerrarModal(()=>{render(false);toast('Registrado')})}})}
+function formMovItem(it,tipo){const ex=existPorUbic('i:'+it.id).filter(x=>x[1]>1e-9);if(!ex.length)return alert('Este ítem no tiene existencia.');
+  const ubs=S.ubicaciones.filter(u=>u.id!=='u-sin');
+  abrirModal('<form class="frm" id="fmi"><h2>'+(tipo==='traslado'?'Trasladar':'Devolver')+'</h2><p class="mut">'+esc(it.cod+' – '+it.nombre)+'</p>'+
+    '<div class="dos"><label>Desde<select name="orig">'+opts(ex.map(x=>[x[0],nomUbic(x[0])+' ('+n2(x[1])+')']),ex[0][0])+'</select></label><label>'+(tipo==='traslado'?'Hacia':'A')+'<select name="dest">'+(tipo==='devolucion'?'<option value="proveedor">Proveedor</option>':'')+opts(ubs.filter(u=>tipo==='traslado'||u.tipo==='bodega').map(u=>[u.id,u.nombre+(u.tipo==='proyecto'?' (obra)':'')]),'')+'</select></label></div>'+
+    '<div class="dos"><label>Cantidad<input name="cant" inputmode="decimal" value="'+esc(n2(ex[0][1]))+'"></label><label>Fecha<input type="date" name="fecha" value="'+hoyISO()+'"></label></div><label>Nota<input name="nota"></label>'+
+    '<div class="botones"><button type="button" class="btn sec" data-cerrar>Cancelar</button><button class="btn">Registrar</button></div></form>',h=>{
+    $('#fmi',h).onsubmit=async e=>{e.preventDefault();const f=e.target;const c=parseNum(f.cant.value);const hay=(EXI['i:'+it.id]||{})[f.orig.value]||0;
+      if(!(c>0)||c>hay+1e-9)return alert('Cantidad no válida (hay '+n2(hay)+').');if(f.dest.value===f.orig.value)return alert('Origen y destino son iguales');
+      await mov({tipo,itemId:it.id,cant:c,und:it.und,origen:f.orig.value,destino:f.dest.value,fecha:f.fecha.value,nota:f.nota.value.trim()});
+      if(f.dest.value!=='proveedor'&&Math.abs(c-it.cant)<1e-9)await guardar('items',{...item(it.id),ubic:nomUbic(f.dest.value)});
+      cerrarModal(()=>{render(false);toast('Registrado')})}})}
+
+/* ---------- SOBRANTES de un proyecto (lo que queda en su ubicación) ---------- */
+function sobrantesDe(pid){const u=ubicDeProyecto(pid);const out=[];
+  for(const [k,e] of Object.entries(EXI)){const c=e[u]||0;if(c<=1e-9)continue;const [t,id]=k.split(/:(.*)/);
+    if(t==='m'){const m=material(id);if(m)out.push({k,tipo:'m',id,nombre:m.nombre,und:m.unidad,c})}else{const it=item(id);if(it)out.push({k,tipo:'i',id,nombre:it.cod+' '+it.nombre,und:it.und,c})}}
+  return out.sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'))}
+function sobrantesHTML(p){const L=sobrantesDe(p.id);
+  return '<p class="mut">Lo que está en la ubicación de la obra y no se ha usado. Al cerrar el proyecto, trasládalo a Bodega o a otro proyecto.</p>'+
+    (L.length?'<div class="card pad">'+L.map(x=>'<div class="renglon"><span>'+esc(x.nombre)+'</span><b>'+n2(x.c)+' '+esc(x.und)+'</b></div>').join('')+'</div><button class="btn ancho" id="trs">Trasladar sobrantes</button>':vacio('No hay sobrantes en la obra.'))+
+    (p.estado!=='cerrado'?'<button class="btn sec ancho" id="cer">Marcar proyecto como cerrado</button>':'')}
+function formTrasladoSobrantes(p){const L=sobrantesDe(p.id);const ubs=S.ubicaciones.filter(u=>u.id!=='u-sin'&&u.id!==ubicDeProyecto(p.id));
+  abrirModal('<form class="frm" id="fts"><h2>Trasladar sobrantes</h2><label>Hacia<select name="dest">'+opts(ubs.map(u=>[u.id,u.nombre+(u.tipo==='proyecto'?' (obra)':'')]),(S.ubicaciones.find(u=>norm(u.nombre)==='bodega')||{}).id)+'</select></label>'+
+    L.map((x,k)=>'<label class="chk"><input type="checkbox" name="s'+k+'" checked><span>'+esc(x.nombre)+' · '+n2(x.c)+' '+esc(x.und)+'</span></label>').join('')+
+    '<div class="botones"><button type="button" class="btn sec" data-cerrar>Cancelar</button><button class="btn">Trasladar</button></div></form>',h=>{
+    $('#fts',h).onsubmit=async e=>{e.preventDefault();const f=e.target;let n=0;
+      for(const [k,x] of L.entries()){if(!f['s'+k].checked)continue;await mov({tipo:'traslado',[x.tipo==='m'?'materialId':'itemId']:x.id,cant:x.c,und:x.und,origen:ubicDeProyecto(p.id),destino:f.dest.value,nota:'Sobrante de '+p.nombre});
+        if(x.tipo==='i'&&Math.abs(x.c-item(x.id).cant)<1e-9)await guardar('items',{...item(x.id),ubic:nomUbic(f.dest.value)});n++}
+      cerrarModal(()=>{render(false);toast(n+' trasladados')})}})}
+
+/* ---------- BODEGA: existencias de materiales por ubicación ---------- */
+let fexi='';
+function vExi(){setTop('Existencias');setFab(null);
+  const ubs=[...S.ubicaciones].sort((a,b)=>(a.tipo===b.tipo?0:a.tipo==='bodega'?-1:1)||a.nombre.localeCompare(b.nombre,'es'));
+  const L=Object.entries(EXI).filter(([k])=>k.startsWith('m:')).map(([k,e])=>({m:material(k.slice(2)),e})).filter(x=>x.m);
+  const filas=[];for(const u of ubs){const xs=L.map(x=>({m:x.m,c:x.e[u.id]||0})).filter(x=>Math.abs(x.c)>1e-9);const its=S.items.filter(i=>((EXI['i:'+i.id]||{})[u.id]||0)>1e-9);if(!xs.length&&!its.length)continue;if(fexi&&fexi!==u.id)continue;
+    filas.push('<h3>'+esc(u.nombre)+(u.tipo==='proyecto'?' · obra':'')+'</h3><div class="card pad">'+xs.map(x=>'<a class="renglon" style="color:inherit;text-decoration:none" href="#m/'+x.m.id+'"><span>'+esc(x.m.nombre)+'</span><b>'+n2(x.c)+' '+esc(x.m.unidad)+'</b></a>').join('')+its.map(i=>'<a class="renglon" style="color:inherit;text-decoration:none" href="#i/'+i.id+'"><span>'+esc(i.cod+' '+i.nombre)+'</span><b>'+n2(EXI['i:'+i.id][u.id])+' '+esc(i.und||'und')+'</b></a>').join('')+'</div>')}
+  $('#vista').innerHTML='<label class="frm">Ubicación<select id="fu">'+opts([['','Todas'],...ubs.map(u=>[u.id,u.nombre])],fexi)+'</select></label>'+(filas.join('')||vacio('No hay existencias registradas.'));
+  $('#fu').onchange=e=>{fexi=e.target.value;render(false)}}
+
 /* ===== nuevo ===== */
 /* ---------- MATERIALES: ficha, historial de precios y comparador ---------- */
 function historial(id){const H=[];
@@ -825,10 +983,12 @@ async function vMat(id){const m=material(id);if(!m){location.hash='mat';return}s
   ((m.marca||m.referencia||m.sku||m.espec)?'<dl class="dl" style="margin-top:8px">'+fila('Marca',esc(m.marca))+fila('Referencia',esc(m.referencia||m.sku))+fila('Especificaciones',esc(m.espec).replace(/\n/g,'<br>'))+'</dl>':'')+'</div>'+
   (ultAlza.length?'<div class="aviso">'+ultAlza.map(a=>esc(a.h.quien)+' subió '+fmtN((a.h.unit/a.prev.unit-1)*100)+' % frente a su precio anterior ('+fmt$(a.prev.unit)+' → '+fmt$(a.h.unit)+').').join('<br>')+'</div>':'')+
   '<h3>Precio por '+esc(m.unidad)+' (último de cada proveedor)</h3>'+(ofs.length?'<div class="card pad">'+ofs.map(o=>'<div class="renglon '+(o===b?'mejor':'')+'"><span>'+esc(o.contacto.nombre)+'<div class="mut">'+fechaTxt(o.cot.fecha)+' · cotizado '+fmt$(o.it.precio)+'/'+esc(o.it.und)+(o.vencida?' <span class="tag bad">vencida</span>':'')+'</div></span><span class="num">'+fmt$(o.unit)+'<div class="mut">'+fmt$(o.unitSin)+' sin IVA</div></span></div>').join('')+'</div>':vacio('Sin cotizaciones con precio.'))+
+  (()=>{const ex=existPorUbic('m:'+id);const tot=existencia('m:'+id);return '<h3>Existencias</h3><div class="card pad">'+(ex.length?ex.map(([u,c])=>'<div class="renglon"><span>'+esc(nomUbic(u))+'</span><b>'+fmtN(c)+' '+esc(m.unidad)+'</b></div>').join('')+'<div class="renglon"><span><b>Total</b></span><b>'+fmtN(tot)+' '+esc(m.unidad)+'</b></div>':'<p class="mut" style="margin:0">Sin existencias registradas.</p>')+'</div>'+
+    '<div class="fila"><button class="btn chico" data-mm="recibir">Recibir</button>'+(m.controlarUso?'<button class="btn chico" data-mm="salida">'+ic.out+' Sacar a obra</button>':'')+'<button class="btn sec chico" data-mm="traslado">Trasladar</button><button class="btn sec chico" data-mm="devolucion">Devolver</button><button class="btn sec chico" data-mm="ajuste">Ajustar conteo</button></div>'})()+
   '<h3>Historial de precios</h3>'+(hi.H.length?'<div class="card pad">'+hi.H.map(h=>{const d=hi.min&&h.vigente?(h.unit/hi.min-1)*100:null;return '<div class="renglon'+(h.vigente&&h.unit===hi.min?' mejor':'')+'"><span>'+fechaTxt(h.fecha)+' · '+esc(h.fuente)+(h.quien?' · '+esc(h.quien):'')+(h.vigente?'':' <span class="tag bad">vencida</span>')+'</span><span class="num">'+fmt$(h.unit)+(d!=null?'<div class="mut">'+(d<0.05?'el más bajo':'+'+fmtN(d)+' %')+'</div>':'')+'</span></div>'}).join('')+'</div><p class="mut">Precios con IVA por '+esc(m.unidad)+'. La diferencia es contra el precio vigente más bajo.</p>':vacio('Sin precios.'))+
   (its.length?'<h3>En bodega</h3>'+its.map(x=>cardItem(x)).join(''):'')+
   '<div class="fila"><button class="btn sec" id="ed">Editar</button><button class="btn sec" id="np">+ Precio de referencia</button><button class="btn peligro" id="bo">Borrar</button></div>';
-  $$('[data-ver]').forEach(e=>e.onclick=()=>verFoto(e.dataset.ver));pintarFotos();
+  $$('[data-ver]').forEach(e=>e.onclick=()=>verFoto(e.dataset.ver));pintarFotos();$$('[data-mm]').forEach(b=>b.onclick=()=>formMovMat(m,b.dataset.mm));
   $('#ed').onclick=()=>formMat(m);$('#np').onclick=()=>formPrecio({nombre:m.nombre,unidad:m.unidad,grupo:m.categoria,iva:'incl',fecha:hoyISO(),estimado:false,materialId:m.id},true);
   $('#bo').onclick=async()=>{const usado=S.cotizaciones.some(q=>(q.items||[]).some(i=>i.materialId===id))||S.lista.some(l=>l.materialId===id)||S.precios.some(p=>p.materialId===id)||S.movs.some(x=>x.materialId===id);if(usado)return alert('Este material está en cotizaciones, listas, precios o movimientos. Quítalo de allí primero, o renómbralo.');if(!confirm('¿Borrar '+m.nombre+'?'))return;if(m.foto)await dbDel('fotos',m.foto);await borrar('materiales',id);refrescarListas();history.back()}}
 function formMat(m){const nuevo=!m;m=m?{...m}:{unidad:'und'};let fotoNueva=null,quitar=false;
