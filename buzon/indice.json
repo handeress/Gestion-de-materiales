@@ -1,3 +1,10 @@
 {
- "cargas": []
+ "cargas": [
+  {
+   "id": "20261031-141622-compras-del-control-41-tiban-y-guaduas-1",
+   "fecha": "2026-10-31T14:16:22-05:00",
+   "desc": "Compras del Control: 41 Tibaná y Guaduas, 15 Silvania",
+   "archivo": "20261031-141622-compras-del-control-41-tiban-y-guaduas-1.bin"
+  }
+ ]
 }
